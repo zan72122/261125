@@ -27,23 +27,44 @@
   #homeBtn svg { width: 38px; height: 38px; pointer-events: none; }
   #hand { position: absolute; z-index: 6; width: 92px; height: 92px; margin: -12px 0 0 -30px; pointer-events: none; opacity: 0; will-change: transform, opacity; }
   #fade { position: absolute; inset: 0; z-index: 7; background: #1b1410; opacity: 0; pointer-events: none; transition: opacity 0.7s ease; }
-  #loading { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; gap: 18px; background: #2b201a; transition: opacity 0.6s ease; }
-  #loading i { width: 18px; height: 18px; border-radius: 50%; background: #f3d9a8; opacity: 0.3; animation: pl 1.2s infinite ease-in-out; }
-  #loading i:nth-child(2) { animation-delay: 0.2s; } #loading i:nth-child(3) { animation-delay: 0.4s; }
+  #veils { position: absolute; inset: 0; z-index: 2; pointer-events: none; transition: opacity 0.35s ease; }
+  .veil { position: absolute; overflow: hidden; display: flex; align-items: center; justify-content: center; transition: opacity 0.6s ease;
+    background: radial-gradient(ellipse at 50% 60%, var(--tint) 0%, color-mix(in srgb, var(--tint) 70%, #3a2a20) 100%); background-color: var(--tint); }
+  .veil.off { opacity: 0; }
+  .veil span { display: flex; gap: 12px; opacity: 0.75; }
+  .veil i { width: 12px; height: 12px; border-radius: 50%; background: #fff8ec; opacity: 0.3; animation: pl 1.2s infinite ease-in-out; }
+  .veil i:nth-child(2) { animation-delay: 0.2s; } .veil i:nth-child(3) { animation-delay: 0.4s; }
+  .veil.wait span { opacity: 1; transform: scale(1.25); transition: transform 0.3s ease; }
   @keyframes pl { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
 </style>
 <script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
+<link rel="modulepreload" href="./js/boot.js">
+<link rel="modulepreload" href="./js/facade.js">
+<link rel="modulepreload" href="./lib/three.module.min.js">
+<link rel="modulepreload" href="./js/main.js">
+<link rel="modulepreload" href="./js/util.js">
+<link rel="modulepreload" href="./js/audio.js">
+<link rel="modulepreload" href="./js/textures.js">
+<link rel="modulepreload" href="./js/sculpt.js">
+<link rel="modulepreload" href="./js/creature.js">
+<link rel="modulepreload" href="./js/food.js">
+<link rel="modulepreload" href="./js/hamster.js">
+<link rel="modulepreload" href="./js/rabbit.js">
+<link rel="modulepreload" href="./js/penguin.js">
+<link rel="modulepreload" href="./js/rooms.js">
+<link rel="modulepreload" href="./lib/BufferGeometryUtils.js">
+<link rel="modulepreload" href="./lib/RoomEnvironment.js">
 </head>
 <body>
 <div id="game">
   <canvas id="c"></canvas>
+  <div id="veils"></div>
   <div id="facade"></div>
   <div id="homeBtn"><svg viewBox="0 0 48 48"><path d="M6 23 L24 8 L42 23" fill="none" stroke="#9a6a3c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 21 V40 H37 V21" fill="#e9c48e" stroke="#9a6a3c" stroke-width="4" stroke-linejoin="round"/><rect x="20" y="28" width="8" height="12" rx="3" fill="#9a6a3c"/></svg></div>
   <svg id="hand" viewBox="0 0 100 100"><defs><filter id="hs" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2.5"/><feOffset dy="3"/><feComponentTransfer><feFuncA type="linear" slope="0.3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
     <g filter="url(#hs)"><path d="M30 14 C30 8 39 8 39 14 L39 44 L41 30 C41 24 50 24 50 30 L50 46 L52 34 C52 28 61 28 61 34 L61 48 L63 40 C63 34 72 34 72 40 L72 66 C72 82 62 92 48 92 C36 92 28 86 22 76 L12 58 C9 53 15 47 21 52 L30 62 Z" fill="#fff8ef" fill-opacity="0.9" stroke="#c9a77c" stroke-width="2.5" stroke-linejoin="round"/></g></svg>
   <div id="fade"></div>
-  <div id="loading"><i></i><i></i><i></i></div>
 </div>
-<script type="module" src="./js/main.js"></script>
+<script type="module" src="./js/boot.js"></script>
 </body>
 </html>

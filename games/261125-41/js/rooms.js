@@ -1,12 +1,12 @@
 // Room environments: hamster cage, rabbit hutch, penguin ice yard
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from '../lib/BufferGeometryUtils.js';
-import { woodTex, noiseTex, paperTex, strawTex, cookieTex, softDotTex, waterNormalTex } from './textures.js';
+import { woodTex, woodTexSteps, noiseTex, paperTex, strawTex, cookieTex, softDotTex, waterNormalTex } from './textures.js';
 import { makeSeed, makeBroccoli, makeCarrot, makeLeaf, makeFish, makeShrimp, makeDish } from './food.js';
 import { rng, clamp, lerp, smooth, mergeStatic } from './util.js';
-import { Hamster } from './hamster.js';
-import { Rabbit } from './rabbit.js';
-import { Penguin } from './penguin.js';
+import { Hamster, buildHamsterSteps } from './hamster.js';
+import { Rabbit, buildRabbitSteps } from './rabbit.js';
+import { Penguin, buildPenguinSteps } from './penguin.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -21,6 +21,19 @@ function woodMat(seed, base, dark, opts = {}, repeat = [1, 1]) {
   const clone = (tx) => { const c = tx.clone(); c.repeat.set(repeat[0], repeat[1]); c.needsUpdate = true; return c; };
   return new THREE.MeshStandardMaterial({ map: clone(t.map), normalMap: clone(t.normalMap), roughnessMap: clone(t.roughnessMap), roughness: 1, normalScale: new THREE.Vector2(0.6, 0.6) });
 }
+
+// wood textures used by each room (also generated ahead of time, a slice at a time, by prepare())
+const H_TABLE = [7, [170, 120, 80], [120, 80, 48], { planks: 4 }];
+const H_WOOD = [3, [196, 150, 100], [150, 102, 60], { planks: 0 }];
+const H_WOODV = [5, [190, 140, 92], [138, 92, 52], { planks: 5 }];
+const H_NEST = [12, [200, 158, 108], [150, 108, 64], { planks: 3 }];
+const H_NESTD = [13, [150, 110, 70], [100, 70, 40], {}];
+const H_WHEEL = [21, [205, 165, 115], [160, 118, 70], {}];
+const H_SLAT = [22, [215, 175, 125], [170, 125, 80], { planks: 24 }];
+const R_FLOOR = [41, [196, 160, 118], [150, 112, 72], { planks: 6 }];
+const R_WALL = [43, [176, 132, 88], [128, 90, 54], { planks: 6 }];
+const R_POST = [44, [150, 108, 66], [110, 76, 44]];
+const R_RACK = [45, [160, 118, 76], [120, 84, 50]];
 
 class Room {
   constructor(kind, env, portrait) {
@@ -88,6 +101,8 @@ class Room {
 
 // ---------------------------------------------------------------- Hamster
 export class HamsterRoom extends Room {
+  // the heavy procedural parts, as small slices for background loading
+  static *prepare() { for (const w of [H_TABLE, H_WOOD, H_WOODV, H_NEST, H_NESTD, H_WHEEL, H_SLAT]) yield* woodTexSteps(...w); yield* buildHamsterSteps(); }
   constructor(env, portrait) {
     super('hamster', env, portrait);
     const P = this.portrait;
@@ -104,11 +119,11 @@ export class HamsterRoom extends Room {
     const baseN = pt.normalMap.clone(); baseN.repeat.set(10, 8); baseN.needsUpdate = true;
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 3.6), new THREE.MeshStandardMaterial({ map: baseMap, normalMap: baseN, roughness: 0.95, color: 0xf1e8da }));
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; sc.add(floor);
-    const table = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), woodMat(7, [170, 120, 80], [120, 80, 48], { planks: 4 }, [3, 2]));
+    const table = new THREE.Mesh(new THREE.PlaneGeometry(12, 6), woodMat(...H_TABLE, [3, 2]));
     table.rotation.x = -Math.PI / 2; table.position.set(0, -0.005, 3.2); table.receiveShadow = true; sc.add(table);
     // cage: wood tray rim, back panel, side posts + bars
-    const wood = woodMat(3, [196, 150, 100], [150, 102, 60], { planks: 0 }, [1, 1]);
-    const woodV = woodMat(5, [190, 140, 92], [138, 92, 52], { planks: 5 }, [1, 1]);
+    const wood = woodMat(...H_WOOD, [1, 1]);
+    const woodV = woodMat(...H_WOODV, [1, 1]);
     box(4.6, 2.6, 0.08, woodV, 0, 1.3, -1.75, sc); // back panel
     box(4.6, 0.12, 0.1, wood, 0, 0.06, 1.62, sc); // front rim (low)
     for (const sx of [-1, 1]) {
@@ -212,8 +227,8 @@ export class HamsterRoom extends Room {
   makeNest(x, z) {
     const g = new THREE.Group(); g.position.set(x, 0, z);
     const w = 1.0, h = 0.68, d = 0.82, t = 0.035;
-    const wm = woodMat(12, [200, 158, 108], [150, 108, 64], { planks: 3 }, [1, 1]);
-    const dark = woodMat(13, [150, 110, 70], [100, 70, 40], {}, [1, 1]);
+    const wm = woodMat(...H_NEST, [1, 1]);
+    const dark = woodMat(...H_NESTD, [1, 1]);
     box(w, h, t, wm, 0, h / 2, -d / 2, g); // back
     box(t, h, d, wm, -w / 2, h / 2, 0, g); box(t, h, d, wm, w / 2, h / 2, 0, g);
     box(w + 0.12, t, d + 0.12, wm, 0, h + t / 2, 0.02, g); // roof
@@ -250,13 +265,13 @@ export class HamsterRoom extends Room {
     const R = 0.56, D = 0.3;
     this.spots.wheelR = R;
     const g = new THREE.Group(); g.position.set(x, 0.06 + R, z);
-    const wm = woodMat(21, [205, 165, 115], [160, 118, 70], {}, [1, 1]);
+    const wm = woodMat(...H_WHEEL, [1, 1]);
     // back disc
     const back = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.03, R + 0.03, 0.03, 48), wm); back.rotation.x = Math.PI / 2; back.position.z = -D / 2 - 0.015; back.castShadow = true; back.receiveShadow = true;
     const drum = new THREE.Group(); drum.userData.dyn = true;
     drum.add(back);
     // running surface (slatted)
-    const slatT = woodTex(22, [215, 175, 125], [170, 125, 80], { planks: 24 });
+    const slatT = woodTex(...H_SLAT);
     const smap = slatT.map.clone(); smap.repeat.set(1, 1); smap.needsUpdate = true;
     const surf = new THREE.Mesh(new THREE.CylinderGeometry(R, R, D, 64, 1, true), new THREE.MeshStandardMaterial({ map: smap, normalMap: slatT.normalMap, side: THREE.DoubleSide, roughness: 0.8 }));
     surf.rotation.x = Math.PI / 2; surf.castShadow = true; surf.receiveShadow = true; drum.add(surf);
@@ -282,6 +297,7 @@ export class HamsterRoom extends Room {
 
 // ---------------------------------------------------------------- Rabbit
 export class RabbitRoom extends Room {
+  static *prepare() { for (const w of [R_FLOOR, R_WALL, R_POST, R_RACK]) yield* woodTexSteps(...w); yield* buildRabbitSteps(); }
   constructor(env, portrait) {
     super('rabbit', env, portrait);
     const P = this.portrait;
@@ -301,20 +317,20 @@ export class RabbitRoom extends Room {
     const fill = new THREE.HemisphereLight(0xe8f2ff, 0x9a7a52, 0.55); sc.add(fill);
     const dirFill = new THREE.DirectionalLight(0xffeedd, 0.5); dirFill.position.set(-2, 3, 3); sc.add(dirFill);
     // wooden floor boards
-    const floorM = woodMat(41, [196, 160, 118], [150, 112, 72], { planks: 6 }, [2, 2]);
+    const floorM = woodMat(...R_FLOOR, [2, 2]);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 7.8), floorM);
     floor.position.z = 2; floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; sc.add(floor);
     // hutch walls
-    const wallM = woodMat(43, [176, 132, 88], [128, 90, 54], { planks: 6 }, [1, 1]);
+    const wallM = woodMat(...R_WALL, [1, 1]);
     box(4.8, 2.8, 0.08, wallM, 0, 1.4, -1.85, sc);
     for (const sx of [-1, 1]) {
       const sw = box(0.08, 2.8, 3.7, wallM, sx * 2.4, 1.4, 0, sc);
-      box(0.12, 2.8, 0.12, woodMat(44, [150, 108, 66], [110, 76, 44]), sx * 2.36, 1.4, 1.7, sc);
+      box(0.12, 2.8, 0.12, woodMat(...R_POST), sx * 2.36, 1.4, 1.7, sc);
     }
-    box(4.8, 0.14, 0.14, woodMat(44, [150, 108, 66], [110, 76, 44]), 0, 2.75, 1.7, sc);
+    box(4.8, 0.14, 0.14, woodMat(...R_POST), 0, 2.75, 1.7, sc);
     // hay rack on the back wall
     const rack = new THREE.Group(); rack.position.set(L.rackX, 0.9, -1.72);
-    const rackM = woodMat(45, [160, 118, 76], [120, 84, 50]);
+    const rackM = woodMat(...R_RACK);
     box(0.9, 0.06, 0.25, rackM, 0, 0, 0.12, rack);
     for (let i = 0; i < 9; i++) { const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.4, 6), rackM); bar.position.set(-0.4 + i * 0.1, 0.2, 0.25); bar.rotation.x = -0.35; bar.castShadow = true; rack.add(bar); }
     rack.add(this.makeStraw(380, 0.8, 0.22, 0.25, 0.32, 51, 0xb9c77e, 0.12));
@@ -384,6 +400,7 @@ export class RabbitRoom extends Room {
 
 // ---------------------------------------------------------------- Penguin
 export class PenguinRoom extends Room {
+  static *prepare() { yield* buildPenguinSteps(); }
   constructor(env, portrait) {
     super('penguin', env, portrait);
     const P = this.portrait;

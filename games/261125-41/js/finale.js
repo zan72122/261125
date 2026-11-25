@@ -1,6 +1,6 @@
 // Finale: three animals asleep together on one fluffy blanket under a warm lamp
 import * as THREE from 'three';
-import { fleeceTex, woodTex, starTex, noiseTex } from './textures.js';
+import { fleeceTex, woodTex, woodTexSteps, starTex, noiseTex } from './textures.js';
 import { Hamster } from './hamster.js';
 import { Rabbit } from './rabbit.js';
 import { Penguin } from './penguin.js';
@@ -9,7 +9,11 @@ import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { fitCamera } from './rooms.js';
 import { softDotTex } from './textures.js';
 
+const FLOOR_WOOD = [101, [150, 100, 62], [98, 62, 36], { planks: 6 }];
+
 export class Finale {
+  // the heavy procedural parts, as small slices for background loading (the animals reuse the rooms' builds)
+  static *prepare() { yield* woodTexSteps(...FLOOR_WOOD); }
   constructor(env) {
     const sc = this.scene = new THREE.Scene();
     sc.environment = env; sc.environmentIntensity = 0.22;
@@ -17,7 +21,7 @@ export class Finale {
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.05, 40);
     this.time = 0;
     // floor
-    const ft = woodTex(101, [150, 100, 62], [98, 62, 36], { planks: 6 });
+    const ft = woodTex(...FLOOR_WOOD);
     const fm = ft.map.clone(); fm.repeat.set(3, 3); fm.needsUpdate = true;
     const fn = ft.normalMap.clone(); fn.repeat.set(3, 3); fn.needsUpdate = true;
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 6), new THREE.MeshStandardMaterial({ map: fm, normalMap: fn, roughness: 0.7 }));

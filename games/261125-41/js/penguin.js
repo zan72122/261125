@@ -1,6 +1,6 @@
 // Emperor-penguin-like chick: grey down, white face mask, black cap
 import * as THREE from 'three';
-import { E, C, G, buildCreature, instantiate, makeEye, surfacePoint, orientZ, attachAt } from './sculpt.js';
+import { runSync, buildCreatureSteps, E, C, G, instantiate, makeEye, surfacePoint, orientZ, attachAt } from './sculpt.js';
 import { Animal } from './creature.js';
 import { smooth, clamp, lerp, bump, rng } from './util.js';
 import * as SFX from './audio.js';
@@ -50,7 +50,8 @@ function prims() {
   return P;
 }
 
-function build() {
+function build() { return runSync(buildSteps()); }
+function* buildSteps() {
   if (BUILT) return BUILT;
   const eyes = [];
   const def = {
@@ -93,8 +94,9 @@ function build() {
       { name: 'throat', fn: (p, n) => { const w = Math.exp(-(sq(p.x / 0.1) + sq((p.y - 0.72) / 0.06) + sq((p.z - 0.13) / 0.08))); return [n.x * w * 0.03, 0, n.z * w * 0.045 + w * 0.01]; } },
     ],
   };
-  BUILT = buildCreature(def);
-  BUILT.eyes = eyes;
+  const built = yield* buildCreatureSteps(def);
+  built.eyes = eyes;
+  BUILT = built;
   return BUILT;
 }
 
@@ -496,3 +498,5 @@ export class Penguin extends Animal {
   }
 }
 export function buildPenguin() { return build(); }
+// sliced version for background loading (fills the same cache)
+export function buildPenguinSteps() { return buildSteps(); }

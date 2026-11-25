@@ -46,8 +46,20 @@ export function furStrandTex(seed = 7) {
 }
 
 // Wood: returns {map, normalMap, roughnessMap}
-export function woodTex(seed = 1, base = [176, 122, 74], dark = [120, 76, 40], { w = 512, h = 512, rings = 9, planks = 0 } = {}) {
-  return once('wood' + seed + base + dark + planks, () => {
+const woodKey = (seed = 1, base = [176, 122, 74], dark = [120, 76, 40], { planks = 0 } = {}) => 'wood' + seed + base + dark + planks;
+export function woodTex(...args) {
+  const k = woodKey(...args);
+  return cache[k] || (cache[k] = runSync(woodGen(...args)));
+}
+// sliced version for background loading: yields every few rows, fills the same cache
+export function* woodTexSteps(...args) {
+  const k = woodKey(...args);
+  if (!cache[k]) cache[k] = yield* woodGen(...args);
+  return cache[k];
+}
+function runSync(gen) { let r; while (!(r = gen.next()).done); return r.value; }
+function* woodGen(seed = 1, base = [176, 122, 74], dark = [120, 76, 40], { w = 512, h = 512, rings = 9, planks = 0 } = {}) {
+  {
     const nz = makeNoise2D(seed, 64), nz2 = makeNoise2D(seed + 9, 128);
     const c = makeCanvas(w, h);
     const ctx = c.getContext('2d');
@@ -57,6 +69,7 @@ export function woodTex(seed = 1, base = [176, 122, 74], dark = [120, 76, 40], {
     const plankOff = [];
     for (let p = 0; p < 16; p++) plankOff.push(rr() * 100);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (x === 0 && (y & 15) === 15) yield;
       const u = x / w, v = y / h;
       let pi = 0, gapD = 1;
       if (planks > 0) {
@@ -80,13 +93,15 @@ export function woodTex(seed = 1, base = [176, 122, 74], dark = [120, 76, 40], {
     }
     ctx.putImageData(img, 0, 0);
     const map = canvasTex(c);
+    yield;
     const normalMap = canvasTex(heightToNormal(hgt, w, h, 3), { srgb: false });
+    yield;
     const rc = makeCanvas(w, h); const rctx = rc.getContext('2d'); const rimg = rctx.createImageData(w, h);
     for (let i = 0; i < w * h; i++) { const v = (0.62 + (1 - hgt[i]) * 0.3) * 255; rimg.data[i * 4] = v; rimg.data[i * 4 + 1] = v; rimg.data[i * 4 + 2] = v; rimg.data[i * 4 + 3] = 255; }
     rctx.putImageData(rimg, 0, 0);
     const roughnessMap = canvasTex(rc, { srgb: false });
     return { map, normalMap, roughnessMap };
-  });
+  }
 }
 
 // generic noisy surface (rocks, plaster, ice)

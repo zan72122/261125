@@ -3,11 +3,12 @@ import * as THREE from 'three';
 import { RoomEnvironment } from '../lib/RoomEnvironment.js';
 import { HamsterRoom, RabbitRoom, PenguinRoom, fitCamera } from './rooms.js';
 import { Finale } from './finale.js';
+import { paintFacade, revealWindow, markWaiting } from './facade.js';
 import * as SFX from './audio.js';
 import { clamp, lerp, smooth, easeInOut, easeOut, damp } from './util.js';
 
 const $ = (id) => document.getElementById(id);
-const canvas = $('c'), facadeEl = $('facade'), homeBtn = $('homeBtn'), handEl = $('hand'), fadeEl = $('fade'), loadingEl = $('loading');
+const canvas = $('c'), facadeEl = $('facade'), veilsEl = $('veils'), homeBtn = $('homeBtn'), handEl = $('hand'), fadeEl = $('fade');
 const params = new URLSearchParams(location.search);
 
 // ---------- renderer ----------
@@ -36,7 +37,8 @@ renderer.setClearColor(0x2b201a, 1);
 
 let W = 1, H = 1;
 const state = {
-  view: 'loading', active: 0, t: 0, rooms: [], finale: null,
+  // rooms are built one by one in the background; a slot stays null until its room is ready
+  view: 'home', active: 0, t: 0, rooms: [null, null, null], finale: null, loading: true, want: -1,
   finaleReached: false, finaleRound: 0, roundShown: -1, finaleTimer: -1,
   lastInput: performance.now() / 1000, demoDone: {}, demo: null,
   winRects: [], lampRect: null, quality: 2, frameTimes: [],
@@ -48,109 +50,105 @@ function layout() {
   W = window.innerWidth; H = window.innerHeight;
   renderer.setPixelRatio(targetDpr());
   renderer.setSize(W, H, false);
-  const land = W > H;
-  const safeTop = 0;
-  const roofH = Math.max(52, Math.min(H * 0.1, 96));
-  const m = Math.max(12, Math.min(W, H) * 0.035);
-  const frame = Math.max(10, Math.min(W, H) * 0.022);
-  const rects = [];
-  if (!land) {
-    const top = roofH + m * 0.6, bottom = H - m;
-    const gap = m + frame * 1.6;
-    const hh = (bottom - top - gap * 2) / 3;
-    for (let i = 0; i < 3; i++) rects.push({ x: m + frame, y: top + i * (hh + gap), w: W - 2 * (m + frame), h: hh - frame * 0.6 });
-  } else {
-    const top = roofH + m * 0.6, bottom = H - m - frame * 1.2;
-    const gap = m + frame * 1.8;
-    const ww = (W - 2 * (m + frame) - gap * 2) / 3;
-    for (let i = 0; i < 3; i++) rects.push({ x: m + frame + i * (ww + gap), y: top + frame * 0.4, w: ww, h: bottom - top - frame });
-  }
-  state.winRects = rects;
-  const lr = Math.max(20, roofH * 0.32);
-  state.lampRect = { x: W / 2 - lr, y: roofH * 0.42 - lr, w: lr * 2, h: lr * 2, cx: W / 2, cy: roofH * 0.42, r: lr };
-  drawFacade(roofH, frame);
+  paintFacade(state, W, H);
 }
-
-function drawFacade(roofH, frame) {
-  const rects = state.winRects;
-  const L = state.lampRect;
-  let holes = '', frames = '', sills = '', glass = '';
-  rects.forEach((r, i) => {
-    const rad = Math.min(18, r.w * 0.05);
-    holes += `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="${rad}" fill="#000"/>`;
-    frames += `<rect x="${r.x - frame / 2}" y="${r.y - frame / 2}" width="${r.w + frame}" height="${r.h + frame}" rx="${rad + frame / 2}" fill="none" stroke="url(#fr)" stroke-width="${frame}"/>`;
-    frames += `<rect x="${r.x - frame}" y="${r.y - frame}" width="${r.w + frame * 2}" height="${r.h + frame * 2}" rx="${rad + frame}" fill="none" stroke="rgba(60,35,18,0.35)" stroke-width="1.5"/>`;
-    frames += `<rect x="${r.x + 1}" y="${r.y + 1}" width="${r.w - 2}" height="${r.h - 2}" rx="${rad}" fill="none" stroke="rgba(0,0,0,0.28)" stroke-width="3"/>`;
-    sills += `<rect x="${r.x - frame * 1.6}" y="${r.y + r.h + frame * 0.55}" width="${r.w + frame * 3.2}" height="${frame * 0.9}" rx="${frame * 0.3}" fill="url(#sill)"/>`;
-    glass += `<path d="M${r.x + r.w * 0.06} ${r.y + r.h} L${r.x + r.w * 0.38} ${r.y} L${r.x + r.w * 0.52} ${r.y} L${r.x + r.w * 0.2} ${r.y + r.h} Z" fill="url(#gl)"/>`;
-  });
-  const lampLit = state.finaleReached;
-  const lamp = `<g id="lampwin">
-    <circle cx="${L.cx}" cy="${L.cy}" r="${L.r + 5}" fill="#7a5032" stroke="#4a2e1a" stroke-width="1.5"/>
-    <circle cx="${L.cx}" cy="${L.cy}" r="${L.r}" fill="${lampLit ? 'url(#lampg)' : '#2a2340'}"/>
-    ${lampLit ? '' : `<circle cx="${L.cx + L.r * 0.3}" cy="${L.cy - L.r * 0.3}" r="1.6" fill="#fff6d0" opacity="0.8"/><circle cx="${L.cx - L.r * 0.35}" cy="${L.cy + L.r * 0.1}" r="1.1" fill="#fff6d0" opacity="0.6"/>`}
-    ${lampLit ? '' : `<path d="M${L.cx - L.r} ${L.cy} H${L.cx + L.r} M${L.cx} ${L.cy - L.r} V${L.cy + L.r}" stroke="#7a5032" stroke-width="2.5"/>`}
-  </g>`;
-  // lit lamp: the pulsing halo is a separate compositor-animated layer (an SVG <animate> would
-  // re-rasterise the whole masked facade every frame); the bulb details sit above it as before
-  const lampTop = lampLit ? `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="position:absolute;left:0;top:0">
-      <path d="M${L.cx - L.r * 0.35} ${L.cy - L.r * 0.05} L${L.cx + L.r * 0.35} ${L.cy - L.r * 0.05} L${L.cx + L.r * 0.22} ${L.cy - L.r * 0.45} L${L.cx - L.r * 0.22} ${L.cy - L.r * 0.45} Z" fill="#fff0c8"/>
-      <rect x="${L.cx - 1.5}" y="${L.cy - L.r * 0.05}" width="3" height="${L.r * 0.55}" fill="#8a6038"/>
-      <path d="M${L.cx - L.r} ${L.cy} H${L.cx + L.r} M${L.cx} ${L.cy - L.r} V${L.cy + L.r}" stroke="#7a5032" stroke-width="2.5"/></svg>` : '';
-  const hr = L.r * 2.4;
-  const halo = lampLit ? `<div class="halo" style="left:${L.cx - hr}px;top:${L.cy - hr}px;width:${hr * 2}px;height:${hr * 2}px"></div>` : '';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
-    <pattern id="sid" width="${W}" height="26" patternUnits="userSpaceOnUse">
-      <rect width="${W}" height="26" fill="#d9b48a"/><rect y="0" width="${W}" height="3" fill="#c49a6c"/><rect y="3" width="${W}" height="2" fill="#e6c49c" opacity="0.6"/>
-    </pattern>
-    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0.25"/><stop offset="0.15" stop-color="#000" stop-opacity="0"/><stop offset="0.85" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.18"/></linearGradient>
-    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8e4a36"/><stop offset="1" stop-color="#6e3426"/></linearGradient>
-    <pattern id="shing" width="34" height="16" patternUnits="userSpaceOnUse"><rect width="34" height="16" fill="url(#roof)"/><path d="M0 15.5 H34 M17 0 V8 M0 8 H34 M8 8 V16 M26 8 V16" stroke="#5a2a1e" stroke-width="1.2" opacity="0.55"/></pattern>
-    <linearGradient id="fr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbf3e4"/><stop offset="1" stop-color="#e3cfae"/></linearGradient>
-    <linearGradient id="sill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6ead4"/><stop offset="1" stop-color="#c8ab84"/></linearGradient>
-    <linearGradient id="gl" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.07"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
-    <radialGradient id="lampg"><stop offset="0" stop-color="#fff4c8"/><stop offset="0.6" stop-color="#ffc66e"/><stop offset="1" stop-color="#e08a3a"/></radialGradient>
-    <radialGradient id="halo"><stop offset="0.3" stop-color="#ffd48a" stop-opacity="0.6"/><stop offset="1" stop-color="#ffd48a" stop-opacity="0"/></radialGradient>
-    <mask id="holes"><rect width="${W}" height="${H}" fill="#fff"/>${holes}</mask>
-  </defs>
-  <g mask="url(#holes)">
-    <rect width="${W}" height="${H}" fill="url(#sid)"/>
-    <rect width="${W}" height="${H}" fill="url(#shade)"/>
-    <rect width="${W}" height="${roofH}" fill="url(#shing)"/>
-    <rect y="${roofH - 6}" width="${W}" height="8" fill="#4e2a1c"/>
-    <rect y="${roofH + 2}" width="${W}" height="10" fill="#000" opacity="0.12"/>
-    <path d="M${W / 2 - roofH * 1.4} ${roofH} L${W / 2} ${-roofH * 0.15} L${W / 2 + roofH * 1.4} ${roofH} Z" fill="#c89a6a" stroke="#6e3426" stroke-width="6" stroke-linejoin="round"/>
-  </g>
-  ${sills}${frames}${glass}${lamp}
-  </svg>`;
-  facadeEl.innerHTML = svg + halo + lampTop;
-}
+// the house front and the window placeholders show and hide together
+function showFacade(on) { const o = on ? '1' : '0'; facadeEl.style.opacity = o; veilsEl.style.opacity = o; }
 
 // ---------- scenes ----------
+// The house front is on screen from the start. The three rooms are then made one after
+// another, the heavy procedural parts in small time slices between frames, so whatever is
+// already on screen keeps moving; each window opens as soon as its room is ready.
+const ROOMS = [HamsterRoom, RabbitRoom, PenguinRoom];
 let env = null;
-async function build() {
-  const tick = () => new Promise((r) => setTimeout(r, 0));
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  await tick();
-  const portrait = window.innerWidth / window.innerHeight < 0.9;
-  state.rooms.push(new HamsterRoom(env, portrait)); await tick();
-  state.rooms.push(new RabbitRoom(env, portrait)); await tick();
-  state.rooms.push(new PenguinRoom(env, portrait)); await tick();
-  state.rooms.forEach((room, i) => {
-    room.optimize();
-    room.index = i;
-    room.animal.onSleep = () => onAnimalSleep(i);
+const portrait = window.innerWidth / window.innerHeight < 0.9;
+// Between slices the browser gets a turn (input, and a frame whenever one is due); a message
+// channel resumes without setTimeout's clamping. Loading may take only so much time per frame:
+// little while a room is being played, more on the house front, a lot while nothing moves yet.
+const chan = new MessageChannel(), chanQ = [];
+chan.port1.onmessage = () => { const r = chanQ.shift(); r && r(); };
+let workSinceFrame = 0, sliceStart = performance.now(), drawMs = 0, frameGap = 16.7, lastFrameAt = 0;
+// a minimum share per frame, or whatever main-thread time is left before the next frame is due
+// (when the GPU sets the pace, the gap between frames is long and the CPU would otherwise idle)
+const frameBudget = () => Math.max(state.view !== 'home' ? 6 : state.rooms.some(Boolean) ? 12 : 60, frameGap - drawMs - 4);
+const nextSlice = () => new Promise((res) => {
+  workSinceFrame += performance.now() - sliceStart;
+  const r = () => { sliceStart = performance.now(); res(); };
+  if (!document.hidden && workSinceFrame >= frameBudget()) requestAnimationFrame(() => setTimeout(r, 0));
+  else { chanQ.push(r); chan.port2.postMessage(0); }
+});
+const SLICE = 8; // ms of work before giving the browser a turn
+async function runSliced(gen) {
+  let t0 = performance.now();
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+    if (performance.now() - t0 > SLICE) { await nextSlice(); t0 = performance.now(); }
+  }
+}
+// upload a scene's textures to the GPU a few at a time (otherwise they all go up in its first frame)
+async function uploadTextures(scene) {
+  const seen = new Set();
+  scene.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) for (const k in m) { const v = m[k]; if (v && v.isTexture && !v.isRenderTargetTexture) seen.add(v); }
   });
-  layout();
-  setShellsHome();
-  // pre-compile
-  for (const r of state.rooms) { r.camera.aspect = 1; r.camera.updateProjectionMatrix(); renderer.compile(r.scene, r.camera); }
+  let t0 = performance.now();
+  for (const t of seen) {
+    renderer.initTexture(t);
+    if (performance.now() - t0 > SLICE) { await nextSlice(); t0 = performance.now(); }
+  }
+}
+async function loadRoom(i) {
+  await runSliced(ROOMS[i].prepare());
+  await nextSlice();
+  const room = new ROOMS[i](env, portrait);
+  room.optimize();
+  room.index = i;
+  room.animal.onSleep = () => onAnimalSleep(i);
+  room.animal.inst.setShells(homeShells());
+  await nextSlice();
+  room.camera.aspect = 1; room.camera.updateProjectionMatrix();
+  await renderer.compileAsync(room.scene, room.camera);
+  await uploadTextures(room.scene);
+  await nextSlice();
+  state.rooms[i] = room;
+  // the window opens once the room has been drawn behind it
+  await nextSlice();
+  revealWindow(i);
+  if (state.want === i) { state.want = -1; if (state.view === 'home') goRoom(i); }
+}
+async function loadAll() {
+  env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  await nextSlice();
+  for (;;) {
+    // a window the player tapped comes first, then the rest in order
+    let i = state.want >= 0 && !state.rooms[state.want] ? state.want : state.rooms.findIndex((r) => !r);
+    if (i < 0) break;
+    await loadRoom(i);
+  }
+  window.__ready = true;
+}
+// the finale is needed only much later: prepare it quietly too
+async function prepareFinale() {
+  await runSliced(Finale.prepare());
+  if (!state.finale && state.view !== 'toFinale') {
+    await nextSlice();
+    const f = new Finale(env);
+    for (const a of f.animals) a.inst.setShells(finaleShells());
+    f.fit(W / H);
+    await renderer.compileAsync(f.scene, f.camera);
+    await uploadTextures(f.scene);
+    if (!state.finale) state.finale = f;
+  }
+  state.loading = false;
+  state.frameTimes.length = 0; state.bootAt = performance.now();
 }
 
-function setShellsHome() { const n = state.quality >= 2 ? 3 : 2; state.rooms.forEach((r) => r.animal.inst.setShells(n)); }
-function setShellsFinale() { if (!state.finale) return; const n = state.quality >= 2 ? 5 : state.quality === 1 ? 3 : 2; for (const a of state.finale.animals) a.inst.setShells(n); }
+const homeShells = () => (state.quality >= 2 ? 3 : 2);
+const finaleShells = () => (state.quality >= 2 ? 5 : state.quality === 1 ? 3 : 2);
+function setShellsHome() { const n = homeShells(); state.rooms.forEach((r) => r && r.animal.inst.setShells(n)); }
+function setShellsFinale() { if (!state.finale) return; const n = finaleShells(); for (const a of state.finale.animals) a.inst.setShells(n); }
 function setShellsRoom(room) { const n = state.quality >= 2 ? 5 : state.quality === 1 ? 3 : 2; room.animal.inst.setShells(n); }
 
 // ---------- camera helpers ----------
@@ -200,10 +198,12 @@ function showHomeBtn(on) {
 function goRoom(i) {
   if (state.view !== 'home') return;
   cancelDemo();
-  state.active = i; state.view = 'zoomIn'; state.t = 0;
   const room = state.rooms[i];
+  // still being made: remember the wish, it opens as soon as it is ready
+  if (!room) { state.want = i; markWaiting(i); SFX.tok(); return; }
+  state.active = i; state.view = 'zoomIn'; state.t = 0;
   SFX.tok();
-  facadeEl.style.opacity = '0';
+  showFacade(false);
   setShellsRoom(room);
   // replay after finale: food reappears and the sleeping animal wakes gently
   if (state.finaleReached && room.animal.asleep) {
@@ -233,7 +233,7 @@ function goFinale() {
   showHomeBtn(false);
 }
 function onAnimalSleep(i) {
-  if (state.rooms.every((r) => r.animal.asleep) && state.roundShown !== state.finaleRound) {
+  if (state.rooms.every((r) => r && r.animal.asleep) && state.roundShown !== state.finaleRound) {
     state.finaleTimer = state.view === 'home' ? 1.5 : 4.5;
   }
 }
@@ -257,7 +257,8 @@ function onDown(e) {
   if (state.view === 'home') {
     const L = state.lampRect;
     if (state.finaleReached && Math.hypot(e.clientX - L.cx, e.clientY - L.cy) < L.r * 1.6) { SFX.chime(); goFinale(); return; }
-    state.winRects.forEach((r, i) => { if (e.clientX >= r.x - 8 && e.clientX <= r.x + r.w + 8 && e.clientY >= r.y - 8 && e.clientY <= r.y + r.h + 8) goRoom(i); });
+    const i = state.winRects.findIndex((r) => e.clientX >= r.x - 8 && e.clientX <= r.x + r.w + 8 && e.clientY >= r.y - 8 && e.clientY <= r.y + r.h + 8);
+    if (i >= 0) goRoom(i);
     return;
   }
   if (state.view !== 'room') return;
@@ -316,7 +317,7 @@ gameEl.addEventListener('pointerup', onUp, { passive: false });
 gameEl.addEventListener('pointercancel', onUp, { passive: false });
 homeBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); SFX.unlock(); SFX.tok(); state.lastInput = now(); goHome(); });
 for (const ev of ['touchstart', 'touchmove', 'gesturestart', 'gesturechange', 'contextmenu', 'dblclick', 'selectstart']) document.addEventListener(ev, (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
-window.addEventListener('resize', () => { if (state.view !== 'loading') { layout(); for (const r of state.rooms) r.camState = null; } });
+window.addEventListener('resize', () => { layout(); for (const r of state.rooms) if (r) r.camState = null; });
 
 function startDrag(room, food, x, y) {
   ptr.kind = 'food';
@@ -407,10 +408,10 @@ function updateDemo(dt) {
     const lift = Math.max(46, Math.min(W, H) * 0.08);
     state.demo = { t: 0, dur: 1.9, a: { x: p.x, y: p.y }, b: { x: m.x, y: m.y + lift * 0.6 }, food, room };
   } else if (state.view === 'home') {
-    const asleep = state.rooms.filter((r) => r.animal.asleep).length;
+    const asleep = state.rooms.filter((r) => r && r.animal.asleep).length;
     const key = 'home:' + state.finaleRound + ':' + asleep;
     if (state.demoDone[key]) return;
-    const idx = state.rooms.findIndex((r) => !r.animal.asleep);
+    const idx = state.rooms.findIndex((r) => r && !r.animal.asleep);
     if (idx < 0) return;
     state.demoDone[key] = true;
     const r = state.winRects[idx];
@@ -425,7 +426,8 @@ function updateDemo(dt) {
 // (iOS Low Power Mode) is recognised and does not push the quality further down.
 function trackPerf(dt) {
   if (state.view !== 'home' && state.view !== 'room' && state.view !== 'finale') { state.frameTimes.length = 0; return; }
-  if (performance.now() - state.bootAt < 4000) return;
+  // frames are uneven while rooms are still being made in the background: judge only afterwards
+  if (state.loading || performance.now() - state.bootAt < 4000) return;
   state.frameTimes.push(dt);
   if (state.frameTimes.length < 90) return;
   const ft = state.frameTimes;
@@ -450,10 +452,13 @@ let frameNo = 0;
 function frame() {
   requestAnimationFrame(frame);
   const tn = performance.now();
+  workSinceFrame = 0;
   let dt = Math.min(params.has('debug') ? +(params.get('cap') || 0.25) : 0.05, (tn - last) / 1000); last = tn;
-  if (state.view === 'loading') return;
   if (!params.has('debug')) trackPerf(dt);
   stepFrame(dt);
+  drawMs = lerp(drawMs, performance.now() - tn, 0.2);
+  if (lastFrameAt) frameGap = lerp(frameGap, Math.min(100, tn - lastFrameAt), 0.2);
+  lastFrameAt = tn;
 }
 function stepFrame(dt) {
   renderer.setScissorTest(false);
@@ -470,6 +475,7 @@ function stepFrame(dt) {
   if (v === 'home') {
     for (let i = 0; i < 3; i++) {
       const room = state.rooms[i];
+      if (!room) continue;
       room.update(dt);
       const r = state.winRects[i];
       applyCam(room, roomCam(room, r, 0), 2, dt);
@@ -481,7 +487,7 @@ function stepFrame(dt) {
     const u = clamp(state.t / D, 0, 1);
     const e = v === 'zoomIn' ? easeInOut(u) : 1 - easeInOut(u);
     for (let i = 0; i < 3; i++) {
-      if (i === state.active) continue;
+      if (i === state.active || !state.rooms[i]) continue;
       const room = state.rooms[i];
       applyCam(room, roomCam(room, state.winRects[i], 0), 2, dt);
       renderRect(room.scene, room.camera, state.winRects[i], false); // frozen during the zoom
@@ -491,10 +497,10 @@ function stepFrame(dt) {
     const rect = lerpRect(state.winRects[state.active], fullRect(), e);
     applyCam(room, roomCam(room, rect, e), 0, dt);
     renderRect(room.scene, room.camera, rect);
-    if (v === 'zoomOut' && u > 0.55) facadeEl.style.opacity = '1';
+    if (v === 'zoomOut' && u > 0.55) showFacade(true);
     if (u >= 1) {
       if (v === 'zoomIn') { state.view = 'room'; showHomeBtn(true); }
-      else { state.view = 'home'; setShellsHome(); for (const r of state.rooms) r.camState = null; }
+      else { state.view = 'home'; setShellsHome(); for (const r of state.rooms) if (r) r.camState = null; }
       state.t = 0;
     }
   } else if (v === 'room') {
@@ -512,7 +518,7 @@ function stepFrame(dt) {
       state.finale.start();
       state.view = 'finale'; state.t = 0;
       state.finaleReached = true; state.roundShown = state.finaleRound;
-      facadeEl.style.opacity = '0';
+      showFacade(false);
       fadeEl.style.opacity = '0';
       SFX.setAmbient('finale');
       SFX.musicBox();
@@ -526,27 +532,29 @@ function stepFrame(dt) {
     if (v === 'finaleOut' && state.t > 0.8) {
       layout();
       state.view = 'home'; state.t = 0;
-      facadeEl.style.opacity = '1'; fadeEl.style.opacity = '0';
-      setShellsHome(); for (const r of state.rooms) r.camState = null;
+      showFacade(true); fadeEl.style.opacity = '0';
+      setShellsHome(); for (const r of state.rooms) if (r) r.camState = null;
       SFX.setAmbient('home');
     }
   }
   if (v === 'home' || v === 'room') state.prevDraw = v === 'home' ? drawHomeStatic : drawRoomStatic;
   updateDemo(dt);
 }
-function drawHomeStatic(dt) { for (let i = 0; i < 3; i++) { const room = state.rooms[i]; applyCam(room, roomCam(room, state.winRects[i], 0), 2, dt); renderRect(room.scene, room.camera, state.winRects[i], false); } }
+function drawHomeStatic(dt) { for (let i = 0; i < 3; i++) { const room = state.rooms[i]; if (!room) continue; applyCam(room, roomCam(room, state.winRects[i], 0), 2, dt); renderRect(room.scene, room.camera, state.winRects[i], false); } }
 function drawRoomStatic(dt) { const room = state.rooms[state.active]; room.update(dt); applyCam(room, roomCam(room, fullRect(), 1), 0, dt); renderRect(room.scene, room.camera, fullRect()); }
 
 // ---------- boot ----------
 (async () => {
+  // take over from boot.js (which painted the house front and noted any early tap)
+  window.removeEventListener('resize', window.__bootResize);
+  gameEl.removeEventListener('pointerdown', window.__bootDown);
+  if (window.__bootTap != null) { state.want = window.__bootTap; markWaiting(state.want); }
   layout();
-  await build();
-  state.view = 'home';
   state.bootAt = performance.now();
-  loadingEl.style.opacity = '0';
-  setTimeout(() => { loadingEl.style.display = 'none'; }, 700);
   SFX.setAmbient('home');
   requestAnimationFrame(frame);
+  const loading = loadAll();
+  loading.then(prepareFinale);
   // debug hooks
   window.__game = {
     state, renderer,
@@ -585,7 +593,7 @@ function drawRoomStatic(dt) { const room = state.rooms[state.active]; room.updat
     },
     info(i) { const a = state.rooms[i].animal; return { state: a.state, asleep: a.asleep, pos: a.root.position.toArray().map((v) => +v.toFixed(2)), foods: state.rooms[i].foods.map((f) => f.state) }; },
   };
-  window.__ready = true;
+  await loading;
   const dbg = params.get('debug');
   if (dbg && dbg.startsWith('room')) window.__game.room(+dbg.slice(4));
   if (dbg === 'finale') window.__game.finale();

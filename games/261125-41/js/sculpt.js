@@ -100,11 +100,12 @@ export function surfacePoint(f, o, d) {
 const CORN = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
 const EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
 
-function surfaceNets(f, bmin, bmax, h) {
+function* surfaceNets(f, bmin, bmax, h) {
   const nx = Math.ceil((bmax[0] - bmin[0]) / h) + 1, ny = Math.ceil((bmax[1] - bmin[1]) / h) + 1, nz = Math.ceil((bmax[2] - bmin[2]) / h) + 1;
   const F = new Float32Array(nx * ny * nz);
   for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     F[i + nx * (j + ny * k)] = f(bmin[0] + i * h, bmin[1] + j * h, bmin[2] + k * h);
+    if (i === nx - 1 && j === ny - 1) yield;
   }
   const cellIdx = new Int32Array(nx * ny * nz).fill(-1);
   const verts = [];
@@ -154,15 +155,22 @@ function surfaceNets(f, bmin, bmax, h) {
 }
 
 // ---------- Creature build ----------
+// Run a step generator to the end in one go (the synchronous path).
+export function runSync(gen) { let r; while (!(r = gen.next()).done); return r.value; }
 // def: { prims, bones:[{name,parent,pos}], bounds:[min,max], h, color(p,n)->[r,g,b], fur(p,n)->0..1+, morphs:[{name, fn(p,n)->[dx,dy,dz]}] }
-export function buildCreature(def) {
+export function buildCreature(def) { return runSync(buildCreatureSteps(def)); }
+// The same build as a generator that yields between small slices of work, so it can be
+// spread over several frames while the game keeps running (the result is identical).
+export function* buildCreatureSteps(def) {
   const f = makeSDF(def.prims);
   if (def.pre) def.pre(f);
-  const { verts, idx } = surfaceNets(f, def.bounds[0], def.bounds[1], def.h);
+  const { verts, idx } = yield* surfaceNets(f, def.bounds[0], def.bounds[1], def.h);
+  yield;
   const nV = verts.length / 3;
   // project onto surface + one laplacian smoothing pass
-  const project = (it) => {
+  const project = function* (it) {
     for (let n = 0; n < it; n++) for (let i = 0; i < nV; i++) {
+      if ((i & 255) === 255) yield;
       const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
       const d = f(x, y, z);
       const g = grad(f, x, y, z);
@@ -170,7 +178,7 @@ export function buildCreature(def) {
       verts[i * 3] -= d * g[0] / gl; verts[i * 3 + 1] -= d * g[1] / gl; verts[i * 3 + 2] -= d * g[2] / gl;
     }
   };
-  project(2);
+  yield* project(2);
   // laplacian smooth
   {
     const acc = new Float32Array(nV * 3), cnt = new Float32Array(nV);
@@ -182,9 +190,10 @@ export function buildCreature(def) {
     }
     for (let i = 0; i < nV; i++) if (cnt[i]) for (let c = 0; c < 3; c++) verts[i * 3 + c] = verts[i * 3 + c] * 0.4 + acc[i * 3 + c] / cnt[i] * 0.6;
   }
-  project(2);
+  yield* project(2);
   // fix triangle orientation against gradient
   for (let t = 0; t < idx.length; t += 3) {
+    if (t % 1536 === 1533) yield;
     const a = idx[t], b = idx[t + 1], c = idx[t + 2];
     const ax = verts[a * 3], ay = verts[a * 3 + 1], az = verts[a * 3 + 2];
     const ux = verts[b * 3] - ax, uy = verts[b * 3 + 1] - ay, uz = verts[b * 3 + 2] - az;
@@ -196,6 +205,7 @@ export function buildCreature(def) {
   }
   const normals = new Float32Array(nV * 3);
   for (let i = 0; i < nV; i++) {
+    if ((i & 511) === 511) yield;
     const g = grad(f, verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
     const l = Math.hypot(g[0], g[1], g[2]) || 1;
     normals[i * 3] = g[0] / l; normals[i * 3 + 1] = g[1] / l; normals[i * 3 + 2] = g[2] / l;
@@ -212,6 +222,7 @@ export function buildCreature(def) {
   const bw = new Float32Array(nB);
   const dists = new Float32Array(prims.length);
   for (let i = 0; i < nV; i++) {
+    if ((i & 255) === 255) yield;
     const x = verts[i * 3], y = verts[i * 3 + 1], z = verts[i * 3 + 2];
     let dmin = 1e9;
     for (let p = 0; p < prims.length; p++) { dists[p] = primDist(prims[p], x, y, z); if (dists[p] < dmin) dmin = dists[p]; }
@@ -240,6 +251,7 @@ export function buildCreature(def) {
   const tagAcc = {};
   const tagW = (t) => tagAcc[t] || 0;
   for (let i = 0; i < nV; i++) {
+    if ((i & 255) === 255) yield;
     P.fromArray(verts, i * 3); N.fromArray(normals, i * 3);
     for (const k in tagAcc) tagAcc[k] = 0;
     {
@@ -268,6 +280,7 @@ export function buildCreature(def) {
     geo.morphAttributes.position = [];
     geo.morphTargetsRelative = true;
     for (const m of def.morphs) {
+      yield;
       const arr = new Float32Array(nV * 3);
       for (let i = 0; i < nV; i++) {
         P.fromArray(verts, i * 3); N.fromArray(normals, i * 3);

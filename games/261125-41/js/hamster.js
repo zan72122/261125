@@ -1,6 +1,6 @@
 // Golden hamster: sculpt + behaviour
 import * as THREE from 'three';
-import { E, C, buildCreature, instantiate, makeEye, surfacePoint, orientZ, attachAt } from './sculpt.js';
+import { runSync, buildCreatureSteps, E, C, instantiate, makeEye, surfacePoint, orientZ, attachAt } from './sculpt.js';
 import { Animal } from './creature.js';
 import { smooth, clamp, lerp, bump, win, rng } from './util.js';
 import * as SFX from './audio.js';
@@ -55,7 +55,8 @@ function prims() {
   return P;
 }
 
-function build() {
+function build() { return runSync(buildSteps()); }
+function* buildSteps() {
   if (BUILT) return BUILT;
   const eyes = [];
   const def = {
@@ -98,8 +99,9 @@ function build() {
       { name: 'breath', fn: (p, n) => { const w = Math.exp(-(sq(p.x / 0.3) + sq((p.y - 0.2) / 0.2) + sq((p.z + 0.0) / 0.28))); return [n.x * w * 0.009, n.y * w * 0.012, n.z * w * 0.004]; } },
     ],
   };
-  BUILT = buildCreature(def);
-  BUILT.eyes = eyes;
+  const built = yield* buildCreatureSteps(def);
+  built.eyes = eyes;
+  BUILT = built;
   return BUILT;
 }
 const sq = (v) => v * v;
@@ -696,3 +698,5 @@ export class Hamster extends Animal {
 }
 
 export function buildHamster() { return build(); }
+// sliced version for background loading (fills the same cache)
+export function buildHamsterSteps() { return buildSteps(); }

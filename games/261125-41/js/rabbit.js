@@ -1,6 +1,6 @@
 // Holland lop rabbit: sculpt + behaviour (spring-simulated lop ears)
 import * as THREE from 'three';
-import { E, C, G, buildCreature, instantiate, makeEye, surfacePoint, orientZ, attachAt } from './sculpt.js';
+import { runSync, buildCreatureSteps, E, C, G, instantiate, makeEye, surfacePoint, orientZ, attachAt } from './sculpt.js';
 import { Animal, angDiff } from './creature.js';
 import { smooth, clamp, lerp, bump, rng } from './util.js';
 import * as SFX from './audio.js';
@@ -78,7 +78,8 @@ function prims() {
   return P;
 }
 
-function build() {
+function build() { return runSync(buildSteps()); }
+function* buildSteps() {
   if (BUILT) return BUILT;
   const eyes = [];
   const def = {
@@ -118,8 +119,9 @@ function build() {
       { name: 'breath', fn: (p, n) => { const w = Math.exp(-(sq(p.x / 0.3) + sq((p.y - 0.33) / 0.22) + sq((p.z + 0.05) / 0.3))); return [n.x * w * 0.01, n.y * w * 0.012, n.z * w * 0.006]; } },
     ],
   };
-  BUILT = buildCreature(def);
-  BUILT.eyes = eyes;
+  const built = yield* buildCreatureSteps(def);
+  built.eyes = eyes;
+  BUILT = built;
   return BUILT;
 }
 
@@ -623,3 +625,5 @@ export class Rabbit extends Animal {
   }
 }
 export function buildRabbit() { return build(); }
+// sliced version for background loading (fills the same cache)
+export function buildRabbitSteps() { return buildSteps(); }
