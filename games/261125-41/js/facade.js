@@ -116,4 +116,3 @@ export function revealWindow(i) {
 }
 // the player tapped a window that is still loading: show it is coming
 export function markWaiting(i) { const v = veils[i]; if (v && !v.classList.contains('off')) v.classList.add('wait'); }
-export function isWindowShown(i) { const v = veils[i]; return !!v && v.classList.contains('off'); }
