@@ -83,7 +83,7 @@ function build() {
     fur(p, n, tw) {
       let f = 1.0 - tw('flip') * 0.15;
       f *= 1 - smooth((p.y - 0.72) / 0.08) * 0.62;
-      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.032) / 0.03); }
+      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.028) / 0.018); }
       const bd = Math.hypot(p.x, p.y - 0.8, p.z - 0.2); f *= smooth((bd - 0.03) / 0.04);
       return clamp(f, 0, 1.2);
     },
@@ -243,6 +243,7 @@ export class Penguin extends Animal {
       this.rot('footL', 0.4 * lie, 0, 0); this.rot('footR', 0.4 * lie, 0, 0);
       this.rot('spine', -0.035 * br * lie, 0, 0);
     }
+    this.rot('neck', 0, 0.35 * g('headSide'), 0.25 * g('headSide')); this.rot('head', -0.15 * g('headSide'), 0.45 * g('headSide'), 0.6 * g('headSide'));
     this.body.rotation.x = 1.36 * lie;
     this.body.position.z = -0.03 * lie;
     this.body.position.y = 0.2 * lie + g('lift');

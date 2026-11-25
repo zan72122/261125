@@ -88,7 +88,7 @@ function build() {
     },
     fur(p, n, tw) {
       let f = 1.0 - tw('ear') * 0.9 - tw('paw') - tw('muzzle') * 0.5 - tw('chin') * 0.3 - tw('arm') * 0.4 + tw('cheek') * 0.15;
-      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.03) / 0.03); }
+      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.027) / 0.016); }
       return clamp(f, 0, 1.2);
     },
     morphs: [
@@ -332,6 +332,7 @@ export class Hamster extends Animal {
       this.body.rotation.z = 0.12 * curl;
       this.rot('spine', 0.02 * br * curl, 0, 0);
     } else this.body.rotation.z = 0;
+    this.rot('head', -1.25 * g('faceUp'), -0.45 * g('faceUp'), -0.2 * g('faceUp')); this.rot('spine', -0.25 * g('faceUp'), 0, 0);
     this.body.position.y += g('lift');
     // pouch morphs (+ tiny chewing wobble)
     const cw = chew * 0.04 * Math.sin(t * 25);

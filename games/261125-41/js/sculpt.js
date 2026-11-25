@@ -398,33 +398,56 @@ export function eyeMaterial(color = 0x0a0706) {
   return new THREE.MeshPhysicalMaterial({ color, roughness: 0.08, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, ior: 1.45, specularIntensity: 1 });
 }
 
+// lid texture: soft fur-like noise with a dark lash band at the rim
+const lidTexC = {};
+function lidTex(lower) {
+  if (lidTexC[lower]) return lidTexC[lower];
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+  const ctx = c.getContext('2d'); const img = ctx.createImageData(64, 64);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const v = 1 - y / 63; // uv.y
+    const rim = lower ? 1 - v : v; // 0 at the rim
+    const band = Math.exp(-Math.pow(rim / 0.09, 2));
+    const n = 0.9 + Math.random() * 0.12;
+    const k = Math.max(0.12, n * (1 - band * 0.82) * (0.88 + 0.12 * Math.min(1, rim * 4)));
+    const i = (x + y * 64) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = k * 255; img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return (lidTexC[lower] = t);
+}
 // Eye with upper eyelid. Returns {group, lid, setClosed(v)}; group's +z points out of the head.
 export function makeEye(radius, lidColor, irisColor = 0x0a0706) {
-  const g = new THREE.Group();
+  const outer = new THREE.Group();
+  const g = new THREE.Group(); outer.add(g);
   const eye = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), eyeMaterial(irisColor));
   g.add(eye);
   // fake catch-light so the eye always reads as glossy
   const hl = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.18, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
   hl.position.set(radius * 0.35, radius * 0.42, radius * 0.82);
   g.add(hl);
-  const lidMat = new THREE.MeshStandardMaterial({ color: lidColor, roughness: 0.9 });
-  const lidGeo = new THREE.SphereGeometry(radius * 1.12, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5);
+  const lc = new THREE.Color(lidColor).multiplyScalar(0.8);
+  const lidMat = new THREE.MeshStandardMaterial({ color: lc, roughness: 0.95, map: lidTex(false) });
+  const lowMat = new THREE.MeshStandardMaterial({ color: lc, roughness: 0.95, map: lidTex(true) });
+  const lidGeo = new THREE.SphereGeometry(radius * 1.1, 28, 12, 0, Math.PI * 2, 0, Math.PI * 0.5);
   const lid = new THREE.Mesh(lidGeo, lidMat);
   const lidPivot = new THREE.Group(); lidPivot.add(lid);
-  g.add(lidPivot);
-  const lowGeo = new THREE.SphereGeometry(radius * 1.1, 24, 8, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38);
-  const low = new THREE.Mesh(lowGeo, lidMat);
-  const lowPivot = new THREE.Group(); lowPivot.add(low); g.add(lowPivot);
+  const flat = new THREE.Group(); flat.scale.set(1.06, 1.04, 1.0); g.add(flat);
+  flat.add(lidPivot);
+  const lowGeo = new THREE.SphereGeometry(radius * 1.08, 28, 8, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38);
+  const low = new THREE.Mesh(lowGeo, lowMat);
+  const lowPivot = new THREE.Group(); lowPivot.add(low); flat.add(lowPivot);
   let closed = 0;
   const setClosed = (v) => {
     closed = v;
-    // open: pole tilted back (-0.5 rad), closed: pole forward-down (PI/2+0.25)
-    lidPivot.rotation.x = -0.85 + v * (Math.PI * 0.5 + 1.1);
-    lowPivot.rotation.x = 0.35 - v * 0.55;
+    // open: upper lid tucked back; closed: upper lid rim meets the raised lower lid at mid-eye (soft lash line)
+    lidPivot.rotation.x = -0.85 + v * 0.97;
+    lowPivot.rotation.x = 0.35 - v * 0.71;
     hl.visible = v < 0.55;
+    g.position.z = -radius * 0.5 * Math.max(0, (v - 0.4) / 0.6);
   };
   setClosed(0);
-  return { group: g, eye, lid: lidPivot, setClosed, hl };
+  return { group: outer, eye, lid: lidPivot, setClosed, hl };
 }
 
 // orient object's +z along direction d (array)

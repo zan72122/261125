@@ -109,7 +109,7 @@ function build() {
     },
     fur(p, n, tw) {
       let f = 1 - tw('ear') * 0.45 - tw('earTip') * 0.45 - tw('muzzle') * 0.35 - tw('paw') * 0.4 + tw('tail') * 0.4 - tw('foot') * 0.3;
-      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.04) / 0.035); }
+      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.035) / 0.02); }
       const nd = Math.hypot(p.x, p.y - 0.54, p.z - 0.47); f *= smooth((nd - 0.02) / 0.03);
       return clamp(f, 0, 1.4);
     },
@@ -384,9 +384,11 @@ export class Rabbit extends Animal {
       this.rot('earRootL', 1.45 * lie, 0, -0.15 * lie); this.rot('earRootR', 1.45 * lie, 0, 0.15 * lie);
       this.rot('earMidL', 0.35 * lie, 0, 0); this.rot('earMidR', 0.35 * lie, 0, 0);
     }
-    this.body.rotation.z = -1.32 * lie;
-    this.body.position.x = -0.04 * lie;
-    const ly = 0.255 * lie;
+    const rk = this.rollK ?? 1;
+    this.body.rotation.z = -1.32 * lie * rk;
+    this.body.position.x = -0.04 * lie * rk;
+    const ly = (rk < 1 ? 0.3 * (Math.cos(1.32 * rk) - 1) + 0.255 * Math.sin(1.32 * rk) / Math.sin(1.32) * 0.75 + 0.02 : 0.255) * lie;
+    this.rot('head', 0.15 * g('headUp'), 0, 0.55 * g('headUp')); this.rot('neck', 0, 0, 0.3 * g('headUp'));
     if (walk < 0.001) this.body.position.y = 0;
     this.body.position.y += ly + g('lift');
     this.body.rotation.y = g('twist');
