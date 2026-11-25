@@ -171,6 +171,7 @@ export class Finale {
     c.pos.y += k * lerp(0.12, 0.1, port);
     this.camera.fov = c.fov; this.camera.aspect = aspect; this.camera.updateProjectionMatrix();
     this.camera.position.copy(c.pos);
+    if (window.__fclose) { const h = this.rabbit.bones.head.getWorldPosition(new THREE.Vector3()); const d = c.pos.clone().sub(h).normalize(); this.camera.position.copy(h).addScaledVector(d, 0.7); this.camera.lookAt(h); return; }
     if (window.__top) { this.camera.position.set(0.35, 3.4, 0.05); this.camera.up.set(0, 0, -1); }
     this.camera.lookAt(c.target);
   }

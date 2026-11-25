@@ -71,7 +71,7 @@ function prims() {
       const w = 0.055 + 0.05 * Math.sin(Math.min(1, u * 1.4) * Math.PI / 2) - 0.012 * Math.pow(u, 3);
       const th = 0.03 - 0.008 * u;
       const bone = u < 0.28 ? 'earRoot' + s : u < 0.62 ? 'earMid' + s : 'earTip' + s;
-      ear.push(E([X(x, m), y, z], [th, 0.06, w], { rot: [0.06, 0, X(u < 0.2 ? 0.9 - u * 3 : 0.1, m)], bone, k: 0.07, tag: u > 0.75 ? 'earTip' : 'ear', s: 0.03 }));
+      ear.push(E([X(x, m), y, z], [th, 0.06, w], { rot: [0.06, 0, X(u < 0.2 ? 0.9 - u * 3 : 0.1, m)], bone, k: 0.07, tag: u > 0.75 ? 'earTip' : 'ear', s: u < 0.3 ? 0.012 : 0.02 }));
     }
     P.push(G(ear, { k: 0.035 }));
   }
@@ -97,7 +97,7 @@ function build() {
       w += tw('paw') * 0.7 + tw('tail') * smooth((-n.z - 0.1) / 0.3);
       c = mix3(c, cream, clamp(w, 0, 1));
       // eye ring lighter
-      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); c = mix3(c, [0.95, 0.85, 0.7], Math.exp(-sq(d / 0.06)) * 0.6); }
+      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); c = mix3(c, [0.93, 0.8, 0.62], Math.exp(-sq(d / 0.055)) * 0.2); }
       // ears: darker edges + pinkish inside
       const ear = tw('ear') + tw('earTip');
       if (ear > 0.01) {
@@ -109,7 +109,7 @@ function build() {
     },
     fur(p, n, tw) {
       let f = 1 - tw('ear') * 0.45 - tw('earTip') * 0.45 - tw('muzzle') * 0.35 - tw('paw') * 0.4 + tw('tail') * 0.4 - tw('foot') * 0.3;
-      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.035) / 0.02); }
+      for (const e of eyes) { const d = Math.hypot(p.x - e[0], p.y - e[1], p.z - e[2]); f *= smooth((d - 0.027) / 0.011); }
       const nd = Math.hypot(p.x, p.y - 0.54, p.z - 0.47); f *= smooth((nd - 0.02) / 0.03);
       return clamp(f, 0, 1.4);
     },
@@ -144,7 +144,7 @@ export class Rabbit extends Animal {
   }
   addParts() {
     const b = this.built, inst = this.inst;
-    const lidCol = new THREE.Color().setRGB(0.86, 0.7, 0.52, THREE.SRGBColorSpace);
+    const lidCol = new THREE.Color().setRGB(0.8, 0.6, 0.4, THREE.SRGBColorSpace);
     b.eyes.forEach((e, i) => {
       const m = i === 1; const d = EYE_DIR(m);
       const eye = makeEye(0.036, lidCol, 0x140c08);
