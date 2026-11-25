@@ -4,7 +4,8 @@ import { fleeceTex, woodTex, starTex, noiseTex } from './textures.js';
 import { Hamster } from './hamster.js';
 import { Rabbit } from './rabbit.js';
 import { Penguin } from './penguin.js';
-import { rng, smooth, lerp, easeInOut } from './util.js';
+import { rng, smooth, lerp, easeInOut, mergeStatic } from './util.js';
+import { mergeGeometries } from '../lib/BufferGeometryUtils.js';
 import { fitCamera } from './rooms.js';
 import { softDotTex } from './textures.js';
 
@@ -146,6 +147,8 @@ export class Finale {
     settle(this.rabbit, 0.02); settle(this.hamster, -0.025); settle(this.penguin, 0.03);
     this.rabbit.floorY = this.rabbit.root.position.y + 0.02;
     this.camT = 0;
+    for (const a of this.animals) a.root.userData.dyn = true;
+    mergeStatic(sc, mergeGeometries);
   }
     start() { this.camT = 0; }
   fit(aspect) {

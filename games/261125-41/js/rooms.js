@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from '../lib/BufferGeometryUtils.js';
 import { woodTex, noiseTex, paperTex, strawTex, cookieTex, softDotTex, waterNormalTex } from './textures.js';
 import { makeSeed, makeBroccoli, makeCarrot, makeLeaf, makeFish, makeShrimp, makeDish } from './food.js';
-import { rng, clamp, lerp, smooth } from './util.js';
+import { rng, clamp, lerp, smooth, mergeStatic } from './util.js';
 import { Hamster } from './hamster.js';
 import { Rabbit } from './rabbit.js';
 import { Penguin } from './penguin.js';
@@ -72,6 +72,12 @@ class Room {
     return food;
   }
   replayFoods() { for (const f of this.foods) f.resetToDish(); }
+  // batch everything that never moves (walls, boxes, rocks, dishes...) into one mesh per material
+  optimize() {
+    this.animal.root.userData.dyn = true;
+    for (const f of this.foods) f.obj.userData.dyn = true;
+    mergeStatic(this.scene, mergeGeometries);
+  }
   update(dt) {
     this.time += dt;
     this.animal.update(dt);
@@ -195,7 +201,7 @@ export class HamsterRoom extends Room {
     const pieces = this.makeBedding(70, 0.5, 0.5);
     pieces.position.y = 0.0;
     grp.add(pieces);
-    grp.visible = false;
+    grp.visible = false; grp.userData.dyn = true;
     this.scene.add(grp);
     const self = this;
     return {
@@ -234,7 +240,7 @@ export class HamsterRoom extends Room {
       const a = r() * Math.PI * 2, rr = r() * 0.06;
       s.position.set(Math.cos(a) * rr, 0.035 + i * 0.006, Math.sin(a) * rr);
       s.rotation.set(Math.PI / 2 + (r() - 0.5) * 0.9, r() * Math.PI, (r() - 0.5) * 0.9);
-      s.visible = false; pile.add(s); this.extraSeeds.push(s);
+      s.visible = false; s.userData.dyn = true; pile.add(s); this.extraSeeds.push(s);
     }
     g.add(pile);
     this.scene.add(g);
@@ -247,7 +253,7 @@ export class HamsterRoom extends Room {
     const wm = woodMat(21, [205, 165, 115], [160, 118, 70], {}, [1, 1]);
     // back disc
     const back = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.03, R + 0.03, 0.03, 48), wm); back.rotation.x = Math.PI / 2; back.position.z = -D / 2 - 0.015; back.castShadow = true; back.receiveShadow = true;
-    const drum = new THREE.Group();
+    const drum = new THREE.Group(); drum.userData.dyn = true;
     drum.add(back);
     // running surface (slatted)
     const slatT = woodTex(22, [215, 175, 125], [170, 125, 80], { planks: 24 });

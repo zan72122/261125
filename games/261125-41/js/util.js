@@ -83,3 +83,43 @@ export function heightToNormal(hgt, w, h, strength = 2) {
 }
 
 export const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+
+// Merge static meshes that share a material (and shadow flags) into one mesh per group.
+// World transforms are baked into the geometry, so draw calls and shadow-pass calls drop
+// without changing what is drawn. Subtrees flagged with userData.dyn are left untouched.
+export function mergeStatic(scene, mergeGeometries) {
+  scene.updateMatrixWorld(true);
+  const groups = new Map();
+  const visit = (o) => {
+    if (o.userData.dyn || !o.visible) return;
+    if (o.isMesh && !o.isInstancedMesh && !o.isSkinnedMesh && o !== scene) {
+      const g = o.geometry, m = o.material;
+      const ok = !Array.isArray(m) && !m.transparent && !m.clippingPlanes && o.renderOrder === 0 && !o.onBeforeRender.length
+        && !Object.keys(g.morphAttributes).length && o.matrixWorld.determinant() > 0 && !m.isShaderMaterial;
+      if (ok) {
+        const key = m.uuid + '|' + (o.castShadow ? 1 : 0) + (o.receiveShadow ? 1 : 0) + '|' + (g.index ? 'i' : 'n') + '|' + Object.keys(g.attributes).sort().join(',');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(o);
+      }
+    }
+    for (const c of o.children) visit(c);
+  };
+  visit(scene);
+  let removed = 0;
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((o) => { const g = o.geometry.clone(); g.clearGroups(); g.applyMatrix4(o.matrixWorld); return g; });
+    const merged = mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const src = list[0];
+    const mesh = new THREE.Mesh(merged, src.material);
+    mesh.castShadow = src.castShadow; mesh.receiveShadow = src.receiveShadow;
+    mesh.matrixAutoUpdate = false; mesh.updateMatrix();
+    for (const o of list) o.parent.remove(o);
+    scene.add(mesh);
+    removed += list.length - 1;
+  }
+  // static meshes left alone never move either: skip their per-frame matrix work
+  return removed;
+}

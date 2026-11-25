@@ -129,10 +129,11 @@ function seedGeo(L) {
   g.computeVertexNormals();
   return g;
 }
+let plainSeedMat = null; // decorative seeds share one material (lets static ones batch)
 export function makeSeed(L = 0.1, plain = false) {
   const g = seedGeo(L);
   const params = { map: seedTex(), roughness: 0.42, clearcoat: 0.5, clearcoatRoughness: 0.35 };
-  if (plain) { const m = new THREE.Mesh(g, new THREE.MeshPhysicalMaterial(params)); m.castShadow = true; return m; }
+  if (plain) { if (!plainSeedMat) plainSeedMat = new THREE.MeshPhysicalMaterial(params); const m = new THREE.Mesh(g, plainSeedMat); m.castShadow = true; return m; }
   const mat = cutMat(params, { inner: [0.93, 0.9, 0.82], outer: [0.15, 0.14, 0.13], ratio: 0.8 });
   const obj = new THREE.Group(); obj.add(new THREE.Mesh(g, mat));
   const top = L / 2;
